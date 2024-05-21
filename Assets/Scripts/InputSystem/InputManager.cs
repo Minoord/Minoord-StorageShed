@@ -1,20 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class InputManager : MonoBehaviour
 {
     private readonly static InputActions _inputAction = new();
-    private readonly static Dictionary<Action<InputAction.CallbackContext>, InputAction> _subscribedInputs = new();
+    private readonly static Dictionary<Action<InputAction.CallbackContext>, InputAction> _subscribedStartedInputs = new();
+    private readonly static Dictionary<Action<InputAction.CallbackContext>, InputAction> _subscribedPreformedInputs = new();
+    private readonly static Dictionary<Action<InputAction.CallbackContext>, InputAction> _subscribedCanceledInputs = new();
 
     /// <summary>
     /// Enables or Disables Input based on isActive
     /// </summary>
     public static void ToggleAllInputs(bool isActive)
     {
-        List<InputAction> actions = _subscribedInputs.Values.ToList();
+        List<InputAction> actions = new();//_subscribedInputs.Values.ToList();
 
         foreach (InputAction action in actions)
         {
@@ -40,9 +43,9 @@ public class InputManager : MonoBehaviour
     public static void SubscribeToAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
     {
         inputAction.Enable();
-        AddFunctionToInput(inputAction, inputPhase, function);
+        inputAction.performed += function;
 
-        _subscribedInputs.Add(function, inputAction);
+        _subscribedPreformedInputs.Add(function, inputAction);
     }
 
     /// <summary>
@@ -51,16 +54,51 @@ public class InputManager : MonoBehaviour
     /// <param name="inputName">The name of the action you want</param>
     /// <param name="function"> The function you want to have subscribed</param>
     /// <param name="inputAction"> Gives back the action it subsribed to</param>
-    public static void SubscribeToAction(string inputName, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function, out InputAction inputAction)
+    public static void SubscribeToAction(string inputName, Action<InputAction.CallbackContext> function, out InputAction inputAction)
     {
         inputAction = TryGetAction(inputName);
 
         inputAction.Enable();
-        AddFunctionToInput(inputAction, inputPhase, function);
+        inputAction.performed += function;
 
-        _subscribedInputs.Add(function, inputAction);
+        _subscribedPreformedInputs.Add(function, inputAction);
     }
 
+    public static void SubscribeToStartedAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        inputAction.Enable();
+        inputAction.started += function;
+
+        _subscribedStartedInputs.Add(function, inputAction);
+    }
+
+    public static void SubscribeToStartedAction(string inputName, Action<InputAction.CallbackContext> function, out InputAction inputAction)
+    {
+        inputAction = TryGetAction(inputName);
+
+        inputAction.Enable();
+        inputAction.started += function;
+
+        _subscribedStartedInputs.Add(function, inputAction);
+    }
+
+    public static void SubscribeToCanceledAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        inputAction.Enable();
+        inputAction.canceled += function;
+
+        _subscribedCanceledInputs.Add(function, inputAction);
+    }
+
+    public static void SubscribeToCanceledAction(string inputName, Action<InputAction.CallbackContext> function, out InputAction inputAction)
+    {
+        inputAction = TryGetAction(inputName);
+
+        inputAction.Enable();
+        inputAction.canceled += function;
+
+        _subscribedCanceledInputs.Add(function, inputAction);
+    }
 
     /// <summary>
     /// Removes the function from the preformed of the given action
@@ -69,9 +107,9 @@ public class InputManager : MonoBehaviour
     /// <param name="function"> The function you want to have unsubscribed</param>
     public static void UnsubscribeToAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
     {
-        RemoveFunctionToInput(inputAction, inputPhase, function);
+        inputAction.performed -= function;
 
-        _subscribedInputs.Remove(function, out inputAction);
+        _subscribedPreformedInputs.Remove(function, out inputAction);
     }
 
     /// <summary>
@@ -82,9 +120,49 @@ public class InputManager : MonoBehaviour
     public static void UnsubscribeToAction(string inputName, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
     {
         InputAction inputAction = TryGetAction(inputName);
-        RemoveFunctionToInput(inputAction, inputPhase, function);
+        inputAction.performed -= function;
 
-        _subscribedInputs.Remove(function, out inputAction);
+        _subscribedPreformedInputs.Remove(function, out inputAction);
+    }
+
+    public static void UnsubscribeToStartedAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        inputAction.started -= function;
+
+        _subscribedStartedInputs.Remove(function, out inputAction);
+    }
+
+    /// <summary>
+    /// Searches for the input based on the inputName and removes the function from the preformed
+    /// </summary>
+    /// <param name="inputName">The name of the action you want</param>
+    /// <param name="function"> The function you want to have unsubscribed</param>
+    public static void UnsubscribeToStartedAction(string inputName, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        InputAction inputAction = TryGetAction(inputName);
+        inputAction.started -= function;
+
+        _subscribedStartedInputs.Remove(function, out inputAction);
+    }
+
+    public static void UnsubscribeToCanceledAction(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        inputAction.canceled -= function;
+
+        _subscribedCanceledInputs.Remove(function, out inputAction);
+    }
+
+    /// <summary>
+    /// Searches for the input based on the inputName and removes the function from the preformed
+    /// </summary>
+    /// <param name="inputName">The name of the action you want</param>
+    /// <param name="function"> The function you want to have unsubscribed</param>
+    public static void UnsubscribeToCanceledAction(string inputName, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    {
+        InputAction inputAction = TryGetAction(inputName);
+        inputAction.canceled -= function;
+
+        _subscribedCanceledInputs.Remove(function, out inputAction);
     }
 
     /// <summary>
@@ -92,48 +170,39 @@ public class InputManager : MonoBehaviour
     /// </summary>
     public static void UnsubscribeToAllActions()
     {
-        foreach (KeyValuePair<Action<InputAction.CallbackContext>, InputAction> input in _subscribedInputs)
+        Dictionary<Action< InputAction.CallbackContext >,InputAction> allInputs = _subscribedStartedInputs;
+        allInputs.AddRange(_subscribedPreformedInputs);
+        allInputs.AddRange(_subscribedCanceledInputs);
+        
+        foreach (KeyValuePair<Action<InputAction.CallbackContext>, InputAction> input in allInputs)
             input.Value.performed -= input.Key;
 
-        _subscribedInputs.Clear();
+        _subscribedStartedInputs.Clear();
+        _subscribedPreformedInputs.Clear();
+        _subscribedCanceledInputs.Clear();
     }
 
-
-    private static void AddFunctionToInput(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    public static void UnsubscribeToAllPreformedActions()
     {
-        switch (inputPhase)
-        {
-            case InputActionPhase.Started:
-                inputAction.started += function;
-                break;
-            case InputActionPhase.Performed:
-                inputAction.performed += function;
-                break;
-            case InputActionPhase.Canceled:
-                inputAction.canceled += function;
-                break;
-            default:
-                Debug.LogError("You have given the wrong InputActionPhase");
-                break;
-        }
+        foreach (KeyValuePair<Action<InputAction.CallbackContext>, InputAction> input in _subscribedPreformedInputs)
+            input.Value.performed -= input.Key;
+
+        _subscribedPreformedInputs.Clear();
     }
 
-    private static void RemoveFunctionToInput(InputAction inputAction, InputActionPhase inputPhase, Action<InputAction.CallbackContext> function)
+    public static void UnsubscribeToAllStartedActions()
     {
-        switch (inputPhase)
-        {
-            case InputActionPhase.Started:
-                inputAction.started -= function;
-                break;
-            case InputActionPhase.Performed:
-                inputAction.performed -= function;
-                break;
-            case InputActionPhase.Canceled:
-                inputAction.canceled -= function;
-                break;
-            default:
-                Debug.LogError("You have given the wrong InputActionPhase");
-                break;
-        }
+        foreach (KeyValuePair<Action<InputAction.CallbackContext>, InputAction> input in _subscribedStartedInputs)
+            input.Value.performed -= input.Key;
+
+        _subscribedStartedInputs.Clear();
+    }
+
+    public static void UnsubscribeToAllCanceledActions()
+    {
+        foreach (KeyValuePair<Action<InputAction.CallbackContext>, InputAction> input in _subscribedCanceledInputs)
+            input.Value.performed -= input.Key;
+
+        _subscribedCanceledInputs.Clear();
     }
 }
