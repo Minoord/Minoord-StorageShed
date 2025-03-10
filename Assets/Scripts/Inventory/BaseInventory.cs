@@ -5,7 +5,7 @@ namespace Project.Inventory
 {
     public abstract class BaseInventory : MonoBehaviour
     {
-        private int _currentInventorySize = 0;
+        private int _currentInventorySize;
         
         private readonly Dictionary<string, (Item item, int amount)> _storage = new();
 
